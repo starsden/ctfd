@@ -25,7 +25,7 @@
 sudo su -
 mkdir -p /opt/ctfd
 cd /opt/ctfd
-git clone <URL_РЕПОЗИТОРИЯ> .
+git clone https://github.com/starsden/ctfd .
 ```
 
 ### Шаг 2.2. Запуск базовой настройки
