@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  ctfd:
+    image: ctfd/ctfd:latest
+    user: root
+    restart: always
+    environment:
+      - UPLOAD_FOLDER=/var/uploads
+      - DATABASE_URL=mysql+pymysql://ctfd:ctfd_db_pass_2026@db/ctfd
+      - REDIS_URL=redis://cache:6379
+      - SECRET_KEY=ctfd_offline_secret_key_change_me_before_event
+      - LOG_FOLDER=/var/log/CTFd
+      - ACCESS_LOG=-
+      - ERROR_LOG=-
+      - REVERSE_PROXY=false
+      - WORKERS=2
+    volumes:
+      - ./.data/CTFd/logs:/var/log/CTFd
+      - ./.data/CTFd/uploads:/var/uploads
+      - ./plugins:/opt/CTFd/CTFd/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "80:8000"
+      - "8000:8000"
+    networks:
+      - ctfd_network
+    depends_on:
+      - db
+      - cache
+
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=mariadb_root_pass_2026
+      - MYSQL_USER=ctfd
+      - MYSQL_PASSWORD=ctfd_db_pass_2026
+      - MYSQL_DATABASE=ctfd
+    volumes:
+      - ./.data/mysql:/var/lib/mysql
+    networks:
+      - ctfd_network
+    command: [
+      "mysqld",
+      "--character-set-server=utf8mb4",
+      "--collation-server=utf8mb4_unicode_ci",
+      "--wait_timeout=28800",
+      "--log-warnings=0"
+    ]
+
+  cache:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - ./.data/redis:/data
+    networks:
+      - ctfd_network
+
+networks:
+  ctfd_network:
+    name: ctfd_network
+    driver: bridge
