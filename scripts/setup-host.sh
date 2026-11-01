@@ -10,12 +10,12 @@ YELLOW='[1;33m'
 BLUE='[0;34m'
 NC='[0m'
 
-echo -e "===================================================="
-echo -e "    Подготовка автономного CTFd сервера (Debian 13) "
-echo -e "===================================================="
+echo -e "${BLUE}====================================================${NC}"
+echo -e "${BLUE}    Подготовка автономного CTFd сервера (Debian 13) ${NC}"
+echo -e "${BLUE}====================================================${NC}"
 
 if [[ $EUID -ne 0 ]]; then
-   echo -e "[!] Скрипт должен быть запущен с правами root (sudo)."
+   echo -e "${RED}[!] Скрипт должен быть запущен с правами root (sudo).${NC}"
    exit 1
 fi
 
@@ -23,18 +23,34 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATIC_IP="192.168.100.1"
 SUBNET_MASK="255.255.255.0"
 
+# Обеспечиваем права на исполнение для всех скриптов
+chmod +x "$PROJECT_DIR"/scripts/*.sh
+if [ -f "$PROJECT_DIR/challenges/web-sample/build.sh" ]; then
+    chmod +x "$PROJECT_DIR/challenges/web-sample/build.sh"
+fi
+
 echo -e "
-[1/7] Определение сетевого интерфейса..."
+${YELLOW}[1/8] Определение сетевого интерфейса...${NC}"
 IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v 'lo' | head -n 1 || echo "enp0s3")
-echo -e "[+] Выбран интерфейс: $IFACE"
+echo -e "${GREEN}[+] Выбран интерфейс: $IFACE${NC}"
 
 echo -e "
-[2/7] Установка системных утилит и dnsmasq..."
+${YELLOW}[2/8] Проверка и освобождение порта 80...${NC}"
+for srv in apache2 nginx lighttpd; do
+    if systemctl is-active --quiet "$srv" 2>/dev/null; then
+        echo -e "[*] Обнаружен работающий веб-сервер $srv (занимает порт 80). Отключаем..."
+        systemctl stop "$srv" 2>/dev/null || true
+        systemctl disable "$srv" 2>/dev/null || true
+    fi
+done
+
+echo -e "
+${YELLOW}[3/8] Установка системных утилит и dnsmasq...${NC}"
 apt-get update
-apt-get install -y --no-install-recommends     curl     wget     git     jq     dnsmasq     dnsutils     iptables     ca-certificates
+apt-get install -y --no-install-recommends     curl     wget     git     jq     dnsmasq     dnsutils     iptables     ca-certificates     lsof
 
 echo -e "
-[3/7] Установка и проверка Docker и Docker Compose..."
+${YELLOW}[4/8] Установка и проверка Docker и Docker Compose...${NC}"
 if ! command -v docker &> /dev/null; then
     echo -e "[*] Установка Docker CE..."
     install -m 0755 -d /etc/apt/keyrings
@@ -47,15 +63,13 @@ fi
 
 systemctl enable docker.service
 systemctl start docker.service
-echo -e "[+] Docker активен."
+echo -e "${GREEN}[+] Docker активен.${NC}"
 
 echo -e "
-[4/7] Настройка статического IP и dnsmasq (DHCP + DNS)..."
-# Настройка статического IP адреса на выбранном интерфейсе
+${YELLOW}[5/8] Настройка статического IP и dnsmasq (DHCP + DNS)...${NC}"
 ip addr add "${STATIC_IP}/24" dev "$IFACE" 2>/dev/null || true
 ip link set dev "$IFACE" up
 
-# Генерация конфига dnsmasq
 mkdir -p /etc/dnsmasq.d
 cat <<EOF > /etc/dnsmasq.d/ctf.conf
 interface=$IFACE
@@ -76,33 +90,33 @@ EOF
 
 systemctl enable dnsmasq.service
 systemctl restart dnsmasq.service
-echo -e "[+] dnsmasq настроен и запущен на $IFACE (IP: $STATIC_IP)."
+echo -e "${GREEN}[+] dnsmasq настроен и запущен на $IFACE (IP: $STATIC_IP).${NC}"
 
 echo -e "
-[5/7] Инициализация Docker Swarm для плагина CTFd-Whale..."
+${YELLOW}[6/8] Инициализация Docker Swarm для плагина CTFd-Whale...${NC}"
 if ! docker info 2>/dev/null | grep -q "Swarm: active"; then
     docker swarm init --advertise-addr "$STATIC_IP" || docker swarm init
 fi
 
 NODE_ID=$(docker node ls -q | head -n 1)
 docker node update --label-add "name=linux-1" "$NODE_ID"
-echo -e "[+] Docker Swarm инициализирован. Нода $NODE_ID помечена как name=linux-1."
+echo -e "${GREEN}[+] Docker Swarm инициализирован. Нода $NODE_ID помечена как name=linux-1.${NC}"
 
 echo -e "
-[6/7] Загрузка плагина CTFd-Whale..."
+${YELLOW}[7/8] Загрузка плагина CTFd-Whale...${NC}"
 PLUGINS_DIR="$PROJECT_DIR/plugins"
 mkdir -p "$PLUGINS_DIR"
 if [ ! -d "$PLUGINS_DIR/ctfd-whale" ]; then
     echo -e "[*] Клонирование ctfd-whale..."
     git clone https://github.com/frankli0324/ctfd-whale.git "$PLUGINS_DIR/ctfd-whale" || {
-        echo -e "[!] Клонирование из сети не удалось (возможно, уже оффлайн). Проверьте наличие каталога ctfd-whale."
+        echo -e "${YELLOW}[!] Клонирование из сети не удалось (возможно, уже оффлайн). Проверьте наличие каталога ctfd-whale.${NC}"
     }
 else
-    echo -e "[+] Плагин ctfd-whale уже присутствует."
+    echo -e "${GREEN}[+] Плагин ctfd-whale уже присутствует.${NC}"
 fi
 
 echo -e "
-[7/7] Настройка Systemd сервиса для автоматического старта CTFd..."
+${YELLOW}[8/8] Настройка Systemd сервиса для автоматического старта CTFd...${NC}"
 cat <<EOF > /etc/systemd/system/ctfd.service
 [Unit]
 Description=CTFd Platform with Docker Compose
@@ -124,11 +138,11 @@ EOF
 
 systemctl daemon-reload
 systemctl enable ctfd.service
-echo -e "[+] Сервис ctfd.service активирован."
+echo -e "${GREEN}[+] Сервис ctfd.service активирован.${NC}"
 
 echo -e "
-===================================================="
-echo -e "[+] Базовая настройка успешно завершена!             "
-echo -e "    Для запуска сервисов выполните:                 "
-echo -e "    systemctl start ctfd.service                    "
-echo -e "===================================================="
+${GREEN}====================================================${NC}"
+echo -e "${GREEN}[+] Базовая настройка успешно завершена!             ${NC}"
+echo -e "${GREEN}    Для запуска сервисов выполните:                 ${NC}"
+echo -e "${GREEN}    systemctl start ctfd.service                    ${NC}"
+echo -e "${GREEN}====================================================${NC}"
