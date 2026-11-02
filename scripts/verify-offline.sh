@@ -43,7 +43,7 @@ test_check "Docker Swarm активен" "docker info 2>/dev/null | grep -q 'Swa
 test_check "Нода Swarm имеет метку name=linux-1" "docker node inspect $(docker node ls -q | head -n 1) | grep -q 'name=linux-1'"
 
 # 4. Базовые Docker образы
-test_check "Образ ctfd/ctfd в локальном кэше" "docker image inspect ctfd/ctfd:latest"
+test_check "Образ ctfd/ctfd в локальном кэше" "docker image inspect ctfd-custom:latest >/dev/null 2>&1 || docker image inspect ctfd/ctfd:latest"
 test_check "Образ mariadb:10.11 в локальном кэше" "docker image inspect mariadb:10.11"
 test_check "Образ redis:7-alpine в локальном кэше" "docker image inspect redis:7-alpine"
 

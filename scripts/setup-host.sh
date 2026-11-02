@@ -155,10 +155,10 @@ NODE_ID=$(docker node ls -q | head -n 1)
 docker node update --label-add "name=linux-1" "$NODE_ID"
 echo -e "${GREEN}[+] Docker Swarm инициализирован. Нода $NODE_ID помечена как name=linux-1.${NC}"
 
-echo -e "\n${YELLOW}[7/8] Загрузка плагина CTFd-Whale...${NC}"
+echo -e "\n${YELLOW}[7/8] Проверка плагина CTFd-Whale и сборка образа CTFd...${NC}"
 PLUGINS_DIR="$PROJECT_DIR/plugins"
 mkdir -p "$PLUGINS_DIR"
-if [ ! -d "$PLUGINS_DIR/ctfd-whale" ]; then
+if [ ! -f "$PLUGINS_DIR/ctfd-whale/__init__.py" ]; then
     echo -e "[*] Клонирование ctfd-whale..."
     git clone https://github.com/frankli0324/ctfd-whale.git "$PLUGINS_DIR/ctfd-whale" || {
         echo -e "${YELLOW}[!] Клонирование из сети не удалось (возможно, уже оффлайн). Проверьте наличие каталога ctfd-whale.${NC}"
@@ -166,6 +166,9 @@ if [ ! -d "$PLUGINS_DIR/ctfd-whale" ]; then
 else
     echo -e "${GREEN}[+] Плагин ctfd-whale уже присутствует.${NC}"
 fi
+
+echo -e "[*] Сборка локального образа CTFd с поддержкой плагина Whale..."
+docker compose -f "$PROJECT_DIR/docker-compose.yml" build ctfd
 
 echo -e "\n${YELLOW}[8/8] Настройка Systemd сервиса для автоматического старта CTFd...${NC}"
 cat <<EOF > /etc/systemd/system/ctfd.service

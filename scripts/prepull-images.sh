@@ -5,14 +5,14 @@
 # ==============================================================================
 set -euo pipefail
 
-GREEN='[0;32m'
-YELLOW='[1;33m'
-BLUE='[0;34m'
-NC='[0m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-echo -e "===================================================="
-echo -e "   Кэширование Docker-образов для оффлайн-работы   "
-echo -e "===================================================="
+echo -e "${BLUE}====================================================${NC}"
+echo -e "${BLUE}   Кэширование Docker-образов для оффлайн-работы   ${NC}"
+echo -e "${BLUE}====================================================${NC}"
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -29,28 +29,27 @@ BASE_CHALLENGE_IMAGES=(
     "alpine:3.19"
 )
 
-echo -e "
-[1/3] Загрузка базовых образов CTFd..."
+echo -e "\n${YELLOW}[1/4] Загрузка базовых образов CTFd...${NC}"
 for img in "${CORE_IMAGES[@]}"; do
     echo -e "[*] Скачивание $img..."
     docker pull "$img"
 done
 
-echo -e "
-[2/3] Загрузка стандартных базовых образов для заданий..."
+echo -e "\n${YELLOW}[2/4] Сборка образа CTFd с предустановленными зависимостями Whale...${NC}"
+docker compose -f "$PROJECT_DIR/docker-compose.yml" build ctfd
+
+echo -e "\n${YELLOW}[3/4] Загрузка стандартных базовых образов для заданий...${NC}"
 for img in "${BASE_CHALLENGE_IMAGES[@]}"; do
     echo -e "[*] Скачивание $img..."
     docker pull "$img"
 done
 
-echo -e "
-[3/3] Сборка локальных образов заданий..."
+echo -e "\n${YELLOW}[4/4] Сборка локальных образов заданий...${NC}"
 if [ -f "$PROJECT_DIR/challenges/web-sample/build.sh" ]; then
     echo -e "[*] Сборка тестового задания ctf/web-sample:latest..."
     bash "$PROJECT_DIR/challenges/web-sample/build.sh"
 fi
 
-echo -e "
-[+] Все необходимые образы успешно сохранены в локальный Docker daemon!"
+echo -e "\n${GREEN}[+] Все необходимые образы успешно сохранены в локальный Docker daemon!${NC}"
 echo -e "Список доступных локальных образов:"
-docker images --format "table {{.Repository}}:{{.Tag}}	{{.Size}}"
+docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"

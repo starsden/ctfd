@@ -1,6 +1,7 @@
 services:
   ctfd:
-    image: ctfd/ctfd:latest
+    build: .
+    image: ctfd-custom:latest
     user: root
     restart: always
     environment:
