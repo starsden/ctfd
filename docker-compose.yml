@@ -16,7 +16,7 @@ services:
     volumes:
       - ./.data/CTFd/logs:/var/log/CTFd
       - ./.data/CTFd/uploads:/var/uploads
-      - ./plugins:/opt/CTFd/CTFd/plugins
+      - ./plugins/ctfd-whale:/opt/CTFd/CTFd/plugins/ctfd-whale
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "80:8000"
