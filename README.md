@@ -15,7 +15,7 @@
 
 ### 1. Подготовка на этапе с интернетом (на сервере Debian 13)
 ```bash
-git clone <ваш_репозиторий> /opt/ctfd
+git clone https://github.com/starsden/ctfd /opt/ctfd
 cd /opt/ctfd
 
 # Установка зависимостей, docker, dnsmasq, swarm, systemd
@@ -60,19 +60,4 @@ sudo bash ./scripts/verify-offline.sh
 +-----------------------------------------------------------------------------------+
 ```
 
----
 
-## Структура репозитория
-
-- [docker-compose.yml](file:///Users/den/Developer/ctfd/docker-compose.yml) — сервисы CTFd, MariaDB, Redis с пробросом Docker-сокета.
-- [WALKTHROUGH.md](file:///Users/den/Developer/ctfd/WALKTHROUGH.md) — подробное пошаговое руководство администратора с настройками плагина.
-- [configs/dnsmasq.conf](file:///Users/den/Developer/ctfd/configs/dnsmasq.conf) — конфигурация легкого DHCP-сервера и локальной зоны DNS.
-- [configs/10-static-enp0s3.network](file:///Users/den/Developer/ctfd/configs/10-static-enp0s3.network) — конфигурация статического IP для `systemd-networkd`.
-- [configs/interfaces](file:///Users/den/Developer/ctfd/configs/interfaces) — конфигурация статического IP для `ifupdown`.
-- [systemd/ctfd.service](file:///Users/den/Developer/ctfd/systemd/ctfd.service) — unit-файл автозапуска CTFd при старте ОС.
-- [scripts/setup-host.sh](file:///Users/den/Developer/ctfd/scripts/setup-host.sh) — скрипт автоматической установки и настройки Debian 13.
-- [scripts/prepull-images.sh](file:///Users/den/Developer/ctfd/scripts/prepull-images.sh) — скрипт предварительного скачивания всех образов.
-- [scripts/export-offline-bundle.sh](file:///Users/den/Developer/ctfd/scripts/export-offline-bundle.sh) — экспорт образов в архив (для air-gapped переноса).
-- [scripts/import-offline-bundle.sh](file:///Users/den/Developer/ctfd/scripts/import-offline-bundle.sh) — импорт образов из архива.
-- [scripts/verify-offline.sh](file:///Users/den/Developer/ctfd/scripts/verify-offline.sh) — автоматическая самодиагностика готовности к оффлайну.
-- [challenges/web-sample/](file:///Users/den/Developer/ctfd/challenges/web-sample/) — готовый пример динамического задания с генерацией флага.
