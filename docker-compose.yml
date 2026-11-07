@@ -56,6 +56,37 @@ services:
     networks:
       - ctfd_network
 
+  frps:
+    image: frankli0324/frp:frps
+    restart: always
+    command: [
+      "--bind_addr=0.0.0.0",
+      "--bind_port=7000",
+      "--token=ctf_frp_token_2026",
+      "--subdomain_host=ctf.local",
+      "--vhost_http_port=8080"
+    ]
+    ports:
+      - "8080:8080"
+      - "20000-20100:20000-20100"
+    networks:
+      - ctfd_network
+
+  frpc:
+    image: frankli0324/frp:frpc
+    restart: always
+    command: [
+      "--server_addr=frps",
+      "--server_port=7000",
+      "--token=ctf_frp_token_2026",
+      "--admin_addr=0.0.0.0",
+      "--admin_port=7400",
+      "--admin_user=admin",
+      "--admin_pwd=admin"
+    ]
+    networks:
+      - ctfd_network
+
 networks:
   ctfd_network:
     name: ctfd_network
