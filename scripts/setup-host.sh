@@ -65,7 +65,11 @@ if ! docker info 2>/dev/null | grep -q 'Swarm: active'; then
     echo -e "[*] Инициализация Docker Swarm..."
     docker swarm init --advertise-addr "$STATIC_IP" 2>/dev/null || docker swarm init 2>/dev/null || true
 fi
-echo -e "${GREEN}[+] Docker Swarm активен.${NC}"
+NODE_ID=$(docker node ls -q 2>/dev/null | head -n 1)
+if [ -n "$NODE_ID" ]; then
+    docker node update --label-add "name=linux-1" "$NODE_ID" 2>/dev/null || true
+fi
+echo -e "${GREEN}[+] Docker Swarm активен (нода помечена как name=linux-1).${NC}"
 
 echo -e "\n${YELLOW}[4/8] Настройка статического IP и dnsmasq...${NC}"
 mkdir -p /etc/network/interfaces.d

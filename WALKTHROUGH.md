@@ -64,11 +64,14 @@ chmod +x scripts/*.sh
 ## 4. Конфигурация плагина CTFd-Whale
 
 1. Перейдите в **Admin Panel** -> вкладка **Whale**:
-   - **Docker Swarm Nodes**: имя текущей swarm-ноды (по умолчанию инициализируется автоматически).
-   - **FRP Direct Port Range**: `21000-22000`.
-   - **FRP API URL**: `http://frpc:7400`.
-   - **Docker API URL**: `unix:///var/run/docker.sock`.
-   - **Auto Connect Network**: `ctfd-compose_frp_containers`.
+   - **Docker Swarm Nodes**: `linux-1`
+   - **Docker API URL**: `unix:///var/run/docker.sock`
+   - **Auto Connect Network**: `ctfd-compose_frp_containers`
+   - **FRP API URL**: `http://frpc:7400`
+   - **FRP Direct IP Address**: `192.168.100.1`
+   - **FRP Direct Port Minimum / Maximum**: `21000` - `22000`
+   - **FRP Http Domain Suffix**: `mvsosh.local`
+   - **FRP Http Port**: `8000`
 2. Нажмите **Update**.
 
 ---

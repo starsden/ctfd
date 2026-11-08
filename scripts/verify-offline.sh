@@ -41,6 +41,8 @@ test_check "DNS резолвит mvsosh.local -> 192.168.100.1" "getent hosts mv
 test_check "Служба docker запущена" "systemctl is-active --quiet docker"
 test_check "Docker Swarm активен" "docker info 2>/dev/null | grep -q 'Swarm: active'"
 test_check "Overlay сеть ctfd-compose_frp_containers присутствует" "docker network inspect ctfd-compose_frp_containers"
+test_check "Нода Swarm имеет метку name=linux-1" "docker node inspect $(docker node ls -q | head -n 1) 2>/dev/null | grep -q 'name=linux-1' || docker node inspect $(docker node ls -q | head -n 1) 2>/dev/null | grep -q '\"name\": \"linux-1\"'"
+
 
 # 4. Образы Docker в локальном кэше
 test_check "Образ ctfd-whale-local в локальном кэше" "docker image inspect ctfd-whale-local"
