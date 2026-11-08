@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# setup-host.sh - Полная автоматическая настройка сервера CTFd на Debian 13
-# Использование: sudo ./setup-host.sh [ИМЯ_ИНТЕРФЕЙСА]
-# Пример:        sudo ./setup-host.sh enp0s8
+# setup-host.sh - Автоматическая настройка сервера CTFd на Debian Trixie (mvsosh)
 # ==============================================================================
 set -euo pipefail
 
@@ -13,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}====================================================${NC}"
-echo -e "${BLUE}    Подготовка автономного CTFd сервера (Debian 13) ${NC}"
+echo -e "${BLUE}    Настройка автономного CTFd сервера (mvsosh)     ${NC}"
 echo -e "${BLUE}====================================================${NC}"
 
 if [[ $EUID -ne 0 ]]; then
@@ -21,185 +19,147 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATIC_IP="192.168.100.1"
 SUBNET_MASK="255.255.255.0"
+WORK_DIR="/opt/mvsosh/CTFd-compose"
+STAGING_DIR="/opt/mvsosh/staging/CTFd"
+FRP_STAGING_DIR="/opt/mvsosh/staging/frp"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Обеспечиваем права на исполнение для всех скриптов
-chmod +x "$PROJECT_DIR"/scripts/*.sh
-if [ -f "$PROJECT_DIR/challenges/web-sample/build.sh" ]; then
-    chmod +x "$PROJECT_DIR/challenges/web-sample/build.sh"
-fi
-
-echo -e "\n${YELLOW}[1/8] Определение сетевого интерфейса участников...${NC}"
-# Если интерфейс передан аргументом - используем его
+echo -e "\n${YELLOW}[1/8] Определение сетевого интерфейса...${NC}"
 if [ -n "${1:-}" ]; then
     IFACE="$1"
-    echo -e "[*] Интерфейс передан вручную: $IFACE"
+elif ip link show eth0 &>/dev/null; then
+    IFACE="eth0"
 elif ip link show enp0s8 &>/dev/null; then
-    # VirtualBox Адаптер 2 (Внутренняя сеть 'ctf-net')
     IFACE="enp0s8"
-    echo -e "[*] Обнаружен второй адаптер VirtualBox: $IFACE"
 else
-    # Ищем все физические интерфейсы (исключая lo, docker, bridge, veth)
-    PHYS_INTERFACES=$(ip -o link show | awk -F': ' '{print $2}' | grep -v -E 'lo|docker|br-|veth' || true)
-    COUNT=$(echo "$PHYS_INTERFACES" | grep -c . || true)
-    if [ "$COUNT" -ge 2 ]; then
-        # Если интерфейсов 2 или более, первый обычно NAT (enp0s3), а второй - внутренняя сеть
-        IFACE=$(echo "$PHYS_INTERFACES" | sed -n '2p')
-        echo -e "[*] Обнаружено несколько сетевых адаптеров. Выбран адаптер внутренней сети: $IFACE"
-    elif [ "$COUNT" -eq 1 ]; then
-        IFACE=$(echo "$PHYS_INTERFACES" | head -n 1)
-        echo -e "[*] Обнаружен единственный адаптер: $IFACE"
-    else
-        IFACE="enp0s8"
-        echo -e "[!] Адаптеры не найдены, по умолчанию используется $IFACE"
-    fi
+    IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v -E 'lo|docker|br-|veth' | head -n 1)
 fi
-echo -e "${GREEN}[+] Целевой сетевой интерфейс для сети участников (CTF): $IFACE${NC}"
+echo -e "${GREEN}[+] Выбран интерфейс: $IFACE${NC}"
 
-echo -e "\n${YELLOW}[2/8] Проверка и освобождение порта 80...${NC}"
+echo -e "\n${YELLOW}[2/8] Проверка и освобождение конфликтующих портов...${NC}"
 for srv in apache2 nginx lighttpd; do
     if systemctl is-active --quiet "$srv" 2>/dev/null; then
-        echo -e "[*] Обнаружен работающий веб-сервер $srv (занимает порт 80). Отключаем..."
+        echo -e "[*] Отключение конфликтующей службы $srv..."
         systemctl stop "$srv" 2>/dev/null || true
         systemctl disable "$srv" 2>/dev/null || true
     fi
 done
 
-echo -e "\n${YELLOW}[3/8] Установка системных утилит и dnsmasq...${NC}"
+echo -e "\n${YELLOW}[3/8] Установка пакетов и настройка Docker...${NC}"
 apt-get update
 apt-get install -y --no-install-recommends \
-    curl \
-    wget \
-    git \
-    jq \
-    dnsmasq \
-    dnsutils \
-    iptables \
-    ca-certificates \
-    lsof
+    curl wget git jq dnsmasq dnsutils iptables ca-certificates lsof \
+    docker.io docker-compose-v2
 
-echo -e "\n${YELLOW}[4/8] Установка и проверка Docker и Docker Compose...${NC}"
-if ! command -v docker &> /dev/null; then
-    echo -e "[*] Установка Docker CE..."
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-    chmod a+r /etc/apt/keyrings/docker.asc
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-      bookworm stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-    apt-get update
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable docker containerd
+systemctl start docker containerd
+
+if [ -n "${SUDO_USER:-}" ]; then
+    usermod -aG docker "$SUDO_USER" || true
 fi
 
-systemctl enable docker.service
-systemctl start docker.service
-echo -e "${GREEN}[+] Docker активен.${NC}"
+# Инициализация Docker Swarm (требуется для overlay-сетей CTFd-Whale)
+if ! docker info 2>/dev/null | grep -q 'Swarm: active'; then
+    echo -e "[*] Инициализация Docker Swarm..."
+    docker swarm init --advertise-addr "$STATIC_IP" 2>/dev/null || docker swarm init 2>/dev/null || true
+fi
+echo -e "${GREEN}[+] Docker Swarm активен.${NC}"
 
-echo -e "\n${YELLOW}[5/8] Настройка статического IP в /etc/network/interfaces и dnsmasq...${NC}"
-# 1. Постоянная фиксация IP в /etc/network/interfaces.d/ctf.cfg
+echo -e "\n${YELLOW}[4/8] Настройка статического IP и dnsmasq...${NC}"
 mkdir -p /etc/network/interfaces.d
-cat <<EOF > /etc/network/interfaces.d/ctf.cfg
-# Конфигурация интерфейса сети участников CTF (сохраняется после перезагрузки)
+rm -f /etc/network/interfaces.d/ctf.cfg
+cat <<EOF > /etc/network/interfaces.d/mvsosh-lab.cfg
 auto $IFACE
-allow-hotplug $IFACE
 iface $IFACE inet static
     address $STATIC_IP
     netmask $SUBNET_MASK
 EOF
 
-# Проверяем, что /etc/network/interfaces подключает каталог interfaces.d
-if [ -f /etc/network/interfaces ] && ! grep -q "interfaces.d" /etc/network/interfaces; then
-    echo -e "\nsource /etc/network/interfaces.d/*" >> /etc/network/interfaces
-fi
+grep -q "interfaces.d" /etc/network/interfaces 2>/dev/null || echo "source /etc/network/interfaces.d/*" >> /etc/network/interfaces
 
-# 2. Немедленное применение IP адреса на интерфейсе
 ip addr replace "${STATIC_IP}/24" dev "$IFACE" 2>/dev/null || true
 ip link set dev "$IFACE" up 2>/dev/null || true
-ifup "$IFACE" 2>/dev/null || true
-echo -e "${GREEN}[+] Статический IP $STATIC_IP/24 зафиксирован на интерфейсе $IFACE.${NC}"
 
-# 3. Настройка dnsmasq (DHCP + DNS)
+# Конфигурация dnsmasq
 mkdir -p /etc/dnsmasq.d
-# Удаляем возможные старые или дублирующие конфиги
-rm -f /etc/dnsmasq.d/ctfd.conf
-
-cat <<EOF > /etc/dnsmasq.d/ctf.conf
+rm -f /etc/dnsmasq.d/ctf.conf /etc/dnsmasq.d/ctfd.conf /etc/dnsmasq.d/mvsosh.conf
+cat <<EOF > /etc/dnsmasq.d/mvsosh-lab.conf
+# ---- Слушаем только лабовый интерфейс ----
 interface=$IFACE
 bind-interfaces
-dhcp-range=192.168.100.50,192.168.100.200,255.255.255.0,12h
-dhcp-option=3,192.168.100.1
-dhcp-option=6,192.168.100.1
-domain=local
-expand-hosts
-address=/ctf.local/192.168.100.1
-address=/ctfd.local/192.168.100.1
-address=/flag.box/192.168.100.1
+listen-address=$STATIC_IP
+
+# ---- DHCP ----
+dhcp-range=192.168.100.100,192.168.100.200,255.255.255.0,12h
+dhcp-option=option:router,$STATIC_IP
+dhcp-option=option:dns-server,$STATIC_IP
+
+# ---- DNS ----
+local=/mvsosh.local/
+domain=mvsosh.local
 no-resolv
-log-dhcp
-log-queries
-log-facility=/var/log/dnsmasq.log
+no-poll
+address=/mvsosh.local/$STATIC_IP
+address=/ctf.local/$STATIC_IP
+address=/#/$STATIC_IP
 EOF
 
-systemctl enable dnsmasq.service
-systemctl restart dnsmasq.service
-echo -e "${GREEN}[+] dnsmasq настроен и запущен на $IFACE (IP: $STATIC_IP).${NC}"
+systemctl enable --now dnsmasq
+systemctl restart dnsmasq
+echo -e "${GREEN}[+] Сеть и dnsmasq настроены.${NC}"
 
-echo -e "\n${YELLOW}[6/8] Инициализация Docker Swarm для плагина CTFd-Whale...${NC}"
-if ! docker info 2>/dev/null | grep -q "Swarm: active"; then
-    docker swarm init --advertise-addr "$STATIC_IP" || docker swarm init
+echo -e "\n${YELLOW}[5/8] Создание структуры каталогов и копирование конфигураций...${NC}"
+mkdir -p "$WORK_DIR/conf" "$WORK_DIR/uploads" "$STAGING_DIR/whale" "$STAGING_DIR/test-web" "$FRP_STAGING_DIR"
+
+# Копирование docker-compose и конфигов
+cp -f "$SCRIPT_DIR/docker-compose.yml" "$WORK_DIR/"
+cp -rf "$SCRIPT_DIR/conf/"* "$WORK_DIR/conf/"
+
+# Копирование staging файлов
+cp -rf "$SCRIPT_DIR/staging/CTFd/"* "$STAGING_DIR/"
+cp -rf "$SCRIPT_DIR/staging/frp/"* "$FRP_STAGING_DIR/"
+
+echo -e "\n${YELLOW}[6/8] Сборка Docker-образов...${NC}"
+# 1. CTFd с плагином whale
+echo -e "[*] Сборка ctfd-whale-local..."
+docker build -t ctfd-whale-local "$STAGING_DIR"
+
+# 2. FRP image
+echo -e "[*] Сборка local-frp..."
+docker build -t local-frp "$FRP_STAGING_DIR"
+
+# 3. Тестовое задание test-web (теги mvsosh/test-web:latest и ctf/test-web:latest)
+echo -e "[*] Сборка test-web..."
+docker build -t mvsosh/test-web:latest "$STAGING_DIR/test-web"
+docker tag mvsosh/test-web:latest ctf/test-web:latest || true
+docker tag mvsosh/test-web:latest test-web:latest || true
+
+echo -e "${GREEN}[+] Все Docker-образы собраны.${NC}"
+
+echo -e "\n${YELLOW}[7/8] Создание overlay-сети и установка автозапуска...${NC}"
+NET_NAME="ctfd-compose_frp_containers"
+if ! docker network inspect "$NET_NAME" >/dev/null 2>&1; then
+    docker network create -d overlay --internal --attachable --subnet 172.2.0.0/16 "$NET_NAME"
 fi
 
-NODE_ID=$(docker node ls -q | head -n 1)
-docker node update --label-add "name=linux-1" "$NODE_ID"
-echo -e "${GREEN}[+] Docker Swarm инициализирован. Нода $NODE_ID помечена как name=linux-1.${NC}"
+# Установка скрипта ctfd-up.sh
+cp -f "$SCRIPT_DIR/scripts/ctfd-up.sh" /usr/local/bin/ctfd-up.sh
+chmod +x /usr/local/bin/ctfd-up.sh
 
-echo -e "\n${YELLOW}[7/8] Проверка плагина CTFd-Whale и сборка образа CTFd...${NC}"
-PLUGINS_DIR="$PROJECT_DIR/plugins"
-mkdir -p "$PLUGINS_DIR"
-if [ ! -f "$PLUGINS_DIR/ctfd-whale/__init__.py" ]; then
-    echo -e "[*] Клонирование ctfd-whale..."
-    git clone https://github.com/frankli0324/ctfd-whale.git "$PLUGINS_DIR/ctfd-whale" || {
-        echo -e "${YELLOW}[!] Клонирование из сети не удалось (возможно, уже оффлайн). Проверьте наличие каталога ctfd-whale.${NC}"
-    }
-else
-    echo -e "${GREEN}[+] Плагин ctfd-whale уже присутствует.${NC}"
-fi
-
-echo -e "[*] Сборка локального образа CTFd с поддержкой плагина Whale..."
-docker compose -f "$PROJECT_DIR/docker-compose.yml" build ctfd
-
-echo -e "\n${YELLOW}[8/8] Настройка Systemd сервиса для автоматического старта CTFd...${NC}"
-cat <<EOF > /etc/systemd/system/ctfd.service
-[Unit]
-Description=CTFd Platform with Docker Compose
-Requires=docker.service
-After=docker.service network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=$PROJECT_DIR
-ExecStart=/usr/bin/docker compose up -d
-ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=300
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
+# Установка systemd service
+cp -f "$SCRIPT_DIR/systemd/ctfd-compose.service" /etc/systemd/system/ctfd-compose.service
 systemctl daemon-reload
-systemctl enable ctfd.service
-echo -e "${GREEN}[+] Сервис ctfd.service активирован.${NC}"
+systemctl enable ctfd-compose.service
+
+echo -e "\n${YELLOW}[8/8] Запуск стека через автоподъёмник...${NC}"
+/usr/local/bin/ctfd-up.sh
 
 echo -e "\n${GREEN}====================================================${NC}"
-echo -e "${GREEN}[+] Настройка завершена!                             ${NC}"
-echo -e "${GREEN}    - Сеть участников:  $IFACE (IP: $STATIC_IP)      ${NC}"
-echo -e "${GREEN}    - DHCP пул:         192.168.100.50 - .200       ${NC}"
-echo -e "${GREEN}    - Домен CTF:        http://ctf.local            ${NC}"
-echo -e "${GREEN}    - Конфиг сети:      /etc/network/interfaces.d/ctf.cfg${NC}"
-echo -e "${GREEN}    Для запуска сервисов выполните:                 ${NC}"
-echo -e "${GREEN}    systemctl start ctfd.service                    ${NC}"
+echo -e "${GREEN}[+] Развертывание успешно завершено!${NC}"
+echo -e "    CTFd доступен по адресам:"
+echo -e "    -> http://mvsosh.local:8000"
+echo -e "    -> http://192.168.100.1:8000"
+echo -e "    Диапазон динамических портов: 21000-22000"
 echo -e "${GREEN}====================================================${NC}"

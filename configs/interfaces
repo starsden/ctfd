@@ -1,7 +1,8 @@
-# /etc/network/interfaces.d/ctf.cfg
-# Настройка адаптера 2 (Внутренняя сеть 'ctf-net' в VirtualBox для участников)
+# /etc/network/interfaces.d/mvsosh-lab.cfg
+# Настройка адаптера 2 (Внутренняя сеть 'mvsosh-net' в VirtualBox для участников)
 auto enp0s8
 allow-hotplug enp0s8
 iface enp0s8 inet static
     address 192.168.100.1
     netmask 255.255.255.0
+

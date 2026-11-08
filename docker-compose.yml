@@ -1,93 +1,82 @@
-services:
-  ctfd:
-    build: .
-    image: ctfd-custom:latest
-    user: root
-    restart: always
-    environment:
-      - UPLOAD_FOLDER=/var/uploads
-      - DATABASE_URL=mysql+pymysql://ctfd:ctfd_db_pass_2026@db/ctfd
-      - REDIS_URL=redis://cache:6379
-      - SECRET_KEY=ctfd_offline_secret_key_change_me_before_event
-      - LOG_FOLDER=/var/log/CTFd
-      - ACCESS_LOG=-
-      - ERROR_LOG=-
-      - REVERSE_PROXY=false
-      - WORKERS=2
-    volumes:
-      - ./.data/CTFd/logs:/var/log/CTFd
-      - ./.data/CTFd/uploads:/var/uploads
-      - ./plugins/ctfd-whale:/opt/CTFd/CTFd/plugins/ctfd-whale
-      - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "80:8000"
-      - "8000:8000"
-    networks:
-      - ctfd_network
-    depends_on:
-      - db
-      - cache
-
-  db:
-    image: mariadb:10.11
-    restart: always
-    environment:
-      - MYSQL_ROOT_PASSWORD=mariadb_root_pass_2026
-      - MYSQL_USER=ctfd
-      - MYSQL_PASSWORD=ctfd_db_pass_2026
-      - MYSQL_DATABASE=ctfd
-    volumes:
-      - ./.data/mysql:/var/lib/mysql
-    networks:
-      - ctfd_network
-    command: [
-      "mysqld",
-      "--character-set-server=utf8mb4",
-      "--collation-server=utf8mb4_unicode_ci",
-      "--wait_timeout=28800",
-      "--log-warnings=0"
-    ]
-
-  cache:
-    image: redis:7-alpine
-    restart: always
-    volumes:
-      - ./.data/redis:/data
-    networks:
-      - ctfd_network
-
-  frps:
-    image: frankli0324/frp:frps
-    restart: always
-    command: [
-      "--bind_addr=0.0.0.0",
-      "--bind_port=7000",
-      "--token=ctf_frp_token_2026",
-      "--subdomain_host=ctf.local",
-      "--vhost_http_port=8080"
-    ]
-    ports:
-      - "8080:8080"
-      - "20000-20100:20000-20100"
-    networks:
-      - ctfd_network
-
-  frpc:
-    image: frankli0324/frp:frpc
-    restart: always
-    command: [
-      "--server_addr=frps",
-      "--server_port=7000",
-      "--token=ctf_frp_token_2026",
-      "--admin_addr=0.0.0.0",
-      "--admin_port=7400",
-      "--admin_user=admin",
-      "--admin_pwd=admin"
-    ]
-    networks:
-      - ctfd_network
+volumes:
+  db_data:
 
 networks:
-  ctfd_network:
-    name: ctfd_network
+  internal:
     driver: bridge
+    internal: true
+  frp_connect:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.1.0.0/16
+  frp_containers:
+    name: ctfd-compose_frp_containers
+    external: true
+
+services:
+  ctfd:
+    image: ctfd-whale-local
+    user: root
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    ports:
+      - "192.168.100.1:8000:8000"
+    volumes:
+      - ./uploads:/var/uploads
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      SECRET_KEY: 5f345fbaa424e6a22b51addf7f27430927879ae2
+      DATABASE_URL: mysql+pymysql://root:ctfd@db/ctfd
+      REDIS_URL: redis://cache:6379
+      WORKERS: 4
+    networks:
+      - internal
+      - frp_connect
+
+  db:
+    image: mariadb:11
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ctfd
+      MYSQL_DATABASE: ctfd
+      MYSQL_USER: ctfd
+      MYSQL_PASSWORD: ctfd
+    volumes:
+      - db_data:/var/lib/mysql
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  cache:
+    image: redis:7
+    restart: always
+    networks: [internal]
+
+  frps:
+    image: local-frp
+    command: ["frps", "-c", "/conf/frps.ini"]
+    restart: always
+    volumes:
+      - ./conf/frps.ini:/conf/frps.ini:ro
+    ports:
+      - "192.168.100.1:21000-22000:21000-22000"
+    networks:
+      - frp_connect
+
+  frpc:
+    image: local-frp
+    command: ["frpc", "-c", "/conf/frpc.ini"]
+    restart: always
+    volumes:
+      - ./conf/frpc.ini:/conf/frpc.ini
+    networks:
+      - frp_connect
+      - frp_containers

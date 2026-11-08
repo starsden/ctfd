@@ -1,86 +1,63 @@
-# Автономный CTF-сервер для локальной сети без интернета
+# Автономный CTF-сервер для локальной сети без интернета (mvsosh)
 
 Комплексное решение для проведения CTF-соревнований в закрытой локальной сети (offline environment):
-- **Сервер:** Debian 13 (Trixie) в VirtualBox с двумя сетевыми адаптерами.
+- **Сервер:** Debian 13 (Trixie) в VirtualBox.
 - **Платформа соревнований:** CTFd + MariaDB + Redis.
 - **Динамические Docker-задания:** Плагин `ctfd-whale` (выдача персонального контейнера каждому участнику/команде с таймером и динамическим флагом).
-- **Сетевая служба:** Лёгкий `dnsmasq` (DHCP + DNS `ctf.local`).
+- **Сетевая служба:** Лёгкий `dnsmasq` (DHCP + DNS `mvsosh.local`).
 - **Участники:** Виртуальные машины Kali Linux в VirtualBox.
-- **Автоматизация:** Полный автозапуск всех сервисов на старте ОС без ручного вмешательства.
+- **Автоматизация:** Полный автозапуск всех сервисов на старте ОС через systemd без ручного вмешательства.
 - **Оффлайн-режим:** 100% автономная работа без необходимости внешнего интернета.
 
 ---
 
 ## Архитектура сети (VirtualBox)
 
-Сервер Debian 13 настраивается с **двумя сетевыми адаптерами**:
-1. **Адаптер 1 (NAT / enp0s3):** Обеспечивает доступ сервера во внешний интернет для предварительного скачивания пакетов и Docker-образов (по DHCP VirtualBox).
-2. **Адаптер 2 (Внутренняя сеть 'ctf-net' / enp0s8):** Выделенный адаптер для соревнований со статическим IP **`192.168.100.1/24`**, на котором работает легковесный DHCP и DNS-сервер (`dnsmasq`).
-
-```
-+-----------------------------------------------------------------------------------+
-|                        VirtualBox Внутренняя сеть: 'ctf-net'                      |
-|                                                                                   |
-|  +-------------------------------------+      +--------------------------------+  |
-|  |       VM Debian 13 (CTFd Сервер)    |      |    VM Kali Linux (Участник 1)  |  |
-|  |  [Адаптер 2: enp0s8]                |      |  [Адаптер 1: 'ctf-net']        |  |
-|  |  IP: 192.168.100.1 / 255.255.255.0  |      |  IP: 192.168.100.50 (DHCP)     |  |
-|  |                                     |      |  DNS: 192.168.100.1            |  |
-|  |  * dnsmasq (DHCP & DNS ctf.local)   |      +--------------------------------+  |
-|  |  * Docker Swarm (нода linux-1)      |                                          |
-|  |  * CTFd Web (:80, :8000)            |      +--------------------------------+  |
-|  |  * Whale динамические порты         |      |    VM Kali Linux (Участник 2)  |  |
-|  |    (:20000 - :20500)                |      |  IP: 192.168.100.51 (DHCP)     |  |
-|  +-------------------------------------+      +--------------------------------+  |
-|                     |                                                             |
-|          [Адаптер 1: enp0s3]                                                      |
-|          (NAT / Внешняя сеть)                                                     |
-+-----------------------------------------------------------------------------------+
-```
+Виртуальная машина Debian 13 настраивается со статическим адресом на интерфейсе лабы (`eth0` или `enp0s8`):
+- **IP сервера:** `192.168.100.1 / 255.255.255.0`
+- **DHCP пул участников:** `192.168.100.100` — `192.168.100.200`
+- **CTFd веб-интерфейс:** `http://mvsosh.local:8000` (или `http://192.168.100.1:8000`)
+- **Динамические порты заданий:** `192.168.100.1:21000-22000`
 
 ---
 
-## Быстрый старт
+## Ответы на частые вопросы по сети и доменам
 
-### 1. Настройка на сервере Debian 13
+### 1. Прописывалось ли имя `ctf.local` в конфиге веб-сервера?
+**Нет, веб-сервер CTFd (Gunicorn/Flask) не привязан к конкретному доменному имени.**
+Он слушает сокет `0.0.0.0:8000` и принимает HTTP-запросы с **любым** заголовком `Host`. Никаких жестких ограничений по домену в коде или конфигах CTFd нет.
+
+### 2. Почему новое имя пингуется, а в браузере не открывается или дает ошибку 500?
+1. **Пинг успешен:** `ping` проверяет только ICMP/DNS резолв. `dnsmasq` отдает `192.168.100.1` на любое имя благодаря wildcard-записи `address=/#/192.168.100.1`, поэтому ping работает.
+2. **Обязательно указывать порт `:8000`:** CTFd опубликован на порту `8000`. Если ввести в браузере просто `http://mvsosh.local`, браузер отправляет запрос на порт `80`. Нужно открывать строго `http://mvsosh.local:8000`.
+3. **Причина ошибки 500 на первом запросе:**
+   - **Сессионные куки и CSRF:** Если ранее в браузере открывался CTFd под другим именем (например, `ctf.local`), в браузере остались сессионные куки. При открытии под новым доменом защита Flask CSRF/Session вызывает несоответствие сессии и разовый сбой.
+   - **Инициализация плагина ctfd-whale:** При самом первом HTTP-запросе к CTFd после старта плагин выполняет инициализацию таблиц и дефолтных настроек в базе данных (`setup_default_configs`). Если запрос попадает во время миграций воркеров, Flask возвращает HTTP 500 один раз, а после обновления страницы всё работает стабильно.
+
+---
+
+## Быстрый старт на сервере
+
 ```bash
-git clone <URL_РЕПОЗИТОРИЯ> /opt/ctfd
-cd /opt/ctfd
+# 1. Запуск комплексной настройки (Debian 13)
+sudo bash ./scripts/setup-host.sh eth0
 
-# Автоматическая настройка (сама определит адаптер enp0s8 или укажите явно: ./setup-host.sh enp0s8)
-sudo bash ./scripts/setup-host.sh enp0s8
-
-# Предварительная загрузка и сборка всех Docker-образов
-sudo bash ./scripts/prepull-images.sh
-```
-
-### 2. Запуск CTFd и проверка готовности
-```bash
-# Запуск сервиса CTFd
-sudo systemctl start ctfd.service
-
-# Комплексная проверка готовности к соревнованию
+# 2. Проверка статуса сервисов
 sudo bash ./scripts/verify-offline.sh
 ```
 
-### 3. Подключение участников (Kali Linux)
-- В настройках каждой ВМ Kali Linux в VirtualBox установите Адаптер 1: **Внутренняя сеть (Internal Network)** с именем **`ctf-net`**.
-- Запустите Kali Linux. Сеть настроится автоматически по DHCP (`192.168.100.X`).
-- В браузере откройте: **`http://ctf.local`** (или `http://192.168.100.1`).
-
 ---
 
-## Структура репозитория
+## Структура каталогов и компонентов
 
-- [docker-compose.yml](file:///Users/den/Developer/ctfd/docker-compose.yml) — сервисы CTFd, MariaDB, Redis с монтированием Docker-сокета.
-- [WALKTHROUGH.md](file:///Users/den/Developer/ctfd/WALKTHROUGH.md) — подробное пошаговое руководство администратора с настройками плагина.
-- [configs/dnsmasq.conf](file:///Users/den/Developer/ctfd/configs/dnsmasq.conf) — конфигурация легкого DHCP-сервера и локальной зоны DNS.
-- [configs/interfaces](file:///Users/den/Developer/ctfd/configs/interfaces) — конфигурация статического IP для `/etc/network/interfaces.d/ctf.cfg`.
-- [configs/10-static-enp0s8.network](file:///Users/den/Developer/ctfd/configs/10-static-enp0s8.network) — конфигурация статического IP для `systemd-networkd`.
-- [systemd/ctfd.service](file:///Users/den/Developer/ctfd/systemd/ctfd.service) — unit-файл автозапуска CTFd при старте ОС.
-- [scripts/setup-host.sh](file:///Users/den/Developer/ctfd/scripts/setup-host.sh) — скрипт автоматической установки и настройки Debian 13.
-- [scripts/prepull-images.sh](file:///Users/den/Developer/ctfd/scripts/prepull-images.sh) — скрипт предварительного скачивания всех образов.
-- [scripts/export-offline-bundle.sh](file:///Users/den/Developer/ctfd/scripts/export-offline-bundle.sh) — экспорт образов в архив (для air-gapped переноса).
-- [scripts/import-offline-bundle.sh](file:///Users/den/Developer/ctfd/scripts/import-offline-bundle.sh) — импорт образов из архива.
-- [scripts/verify-offline.sh](file:///Users/den/Developer/ctfd/scripts/verify-offline.sh) — автоматическая самодиагностика готовности к оффлайну.
-- [challenges/web-sample/](file:///Users/den/Developer/ctfd/challenges/web-sample/) — готовый пример динамического задания с генерацией флага.
+- [docker-compose.yml](file:///Users/den/Developer/ctfd/docker-compose.yml) — рабочий стек CTFd, MariaDB, Redis, frps и frpc.
+- [WALKTHROUGH.md](file:///Users/den/Developer/ctfd/WALKTHROUGH.md) — подробная сводная инструкция администратора.
+- [conf/frps.ini](file:///Users/den/Developer/ctfd/conf/frps.ini) — конфигурация сервера FRP (порты `21000-22000`).
+- [conf/frpc.ini](file:///Users/den/Developer/ctfd/conf/frpc.ini) — конфигурация клиента FRP и Admin API (`0.0.0.0:7400`).
+- [configs/dnsmasq.conf](file:///Users/den/Developer/ctfd/configs/dnsmasq.conf) — DHCP/DNS сервер для домена `mvsosh.local`.
+- [scripts/ctfd-up.sh](file:///Users/den/Developer/ctfd/scripts/ctfd-up.sh) — скрипт гарантированного автоподъема Swarm-сети и стека при загрузке.
+- [scripts/setup-host.sh](file:///Users/den/Developer/ctfd/scripts/setup-host.sh) — автоматическая настройка ОС и сборка образов.
+- [scripts/verify-offline.sh](file:///Users/den/Developer/ctfd/scripts/verify-offline.sh) — диагностика оффлайн-готовности.
+- [staging/CTFd/](file:///Users/den/Developer/ctfd/staging/CTFd/) — исходники для сборки образа `ctfd-whale-local` и тестового задания `test-web`.
+- [staging/frp/](file:///Users/den/Developer/ctfd/staging/frp/) — Dockerfile сборки `local-frp`.
+- [systemd/ctfd-compose.service](file:///Users/den/Developer/ctfd/systemd/ctfd-compose.service) — unit автозапуска.

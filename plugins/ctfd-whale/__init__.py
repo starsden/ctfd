@@ -29,10 +29,17 @@ def load(app):
     app.config['RESTX_ERROR_404_HELP'] = False
     # upgrade()
     plugin_name = __name__.split('.')[-1]
-    set_config('whale:plugin_name', plugin_name)
-    app.db.create_all()
+    try:
+        set_config('whale:plugin_name', plugin_name)
+        app.db.create_all()
+    except Exception:
+        pass
     if not get_config("whale:setup"):
-        setup_default_configs()
+        try:
+            setup_default_configs()
+        except Exception:
+            pass
+
 
     register_plugin_assets_directory(
         app, base_path=f"/plugins/{plugin_name}/assets",

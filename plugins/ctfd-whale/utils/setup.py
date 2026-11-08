@@ -24,12 +24,14 @@ def setup_default_configs():
         'template_chall_flag': '{{ "flag{"+uuid.uuid4()|string+"}" }}',
     }.items():
         set_config('whale:' + key, val)
-    db.session.add(WhaleRedirectTemplate(
-        'http',
-        'http://{{ container.http_subdomain }}.'
-        '{{ get_config("whale:frp_http_domain_suffix", "") }}'
-        '{% if get_config("whale:frp_http_port", "80") != 80 %}:{{ get_config("whale:frp_http_port") }}{% endif %}/',
-        '''
+    try:
+        if not WhaleRedirectTemplate.query.filter_by(key='http').first():
+            db.session.add(WhaleRedirectTemplate(
+                'http',
+                'http://{{ container.http_subdomain }}.'
+                '{{ get_config("whale:frp_http_domain_suffix", "") }}'
+                '{% if get_config("whale:frp_http_port", "80") != 80 %}:{{ get_config("whale:frp_http_port") }}{% endif %}/',
+                '''
 [http_{{ container.user_id|string }}-{{ container.uuid }}]
 type = http
 local_ip = {{ container.user_id|string }}-{{ container.uuid }}
@@ -37,11 +39,12 @@ local_port = {{ container.challenge.redirect_port }}
 subdomain = {{ container.http_subdomain }}
 use_compression = true
 '''
-    ))
-    db.session.add(WhaleRedirectTemplate(
-        'direct',
-        'nc {{ get_config("whale:frp_direct_ip_address", "127.0.0.1") }} {{ container.port }}',
-        '''
+            ))
+        if not WhaleRedirectTemplate.query.filter_by(key='direct').first():
+            db.session.add(WhaleRedirectTemplate(
+                'direct',
+                'nc {{ get_config("whale:frp_direct_ip_address", "127.0.0.1") }} {{ container.port }}',
+                '''
 [direct_{{ container.user_id|string }}-{{ container.uuid }}]
 type = tcp
 local_ip = {{ container.user_id|string }}-{{ container.uuid }}
@@ -56,5 +59,8 @@ local_port = {{ container.challenge.redirect_port }}
 remote_port = {{ container.port }}
 use_compression = true
 '''
-    ))
-    db.session.commit()
+            ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
