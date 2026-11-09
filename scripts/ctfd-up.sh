@@ -44,8 +44,7 @@ fi
 # но подстраховываемся)
 if ! docker network inspect "$NET_NAME" >/dev/null 2>&1; then
     echo "$(date -Is) recreating network $NET_NAME"
-    docker network create -d overlay --internal --attachable \
-        --subnet 172.2.0.0/16 "$NET_NAME"
+    docker network create -d overlay --internal --attachable "$NET_NAME"
 fi
 
 if [ ! -d "$COMPOSE_DIR" ]; then

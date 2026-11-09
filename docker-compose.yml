@@ -7,9 +7,6 @@ networks:
     internal: true
   frp_connect:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.1.0.0/16
   frp_containers:
     name: ctfd-compose_frp_containers
     external: true

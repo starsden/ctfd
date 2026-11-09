@@ -219,7 +219,7 @@ echo -e "${GREEN}[+] Все Docker-образы собраны.${NC}"
 echo -e "\n${YELLOW}[8/8] Создание overlay-сети и запуск стека...${NC}"
 NET_NAME="ctfd-compose_frp_containers"
 if ! docker network inspect "$NET_NAME" >/dev/null 2>&1; then
-    docker network create -d overlay --internal --attachable --subnet 172.2.0.0/16 "$NET_NAME"
+    docker network create -d overlay --internal --attachable "$NET_NAME"
 fi
 
 # Установка скрипта ctfd-up.sh
