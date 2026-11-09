@@ -17,8 +17,8 @@ class WhaleChecks:
             return f'Docker API url incorrect ({e})'
         try:
             client.ping()
-        except (APIError, requests.RequestException):
-            return f'Unable to connect to Docker API, check your API connectivity'
+        except Exception as e:
+            return f'Unable to connect to Docker API ({e}), check your API connectivity'
 
         credentials = get_config("whale:docker_credentials")
         if credentials and credentials.count(':') == 1:
@@ -26,9 +26,12 @@ class WhaleChecks:
                 client.login(*credentials.split(':'))
             except DockerException:
                 return f'Unable to log into docker registry, check your credentials'
-        swarm = client.info()['Swarm']
-        if not swarm['ControlAvailable']:
-            return f'Docker swarm not available. You should initialize a swarm first. ($ docker swarm init)'
+        try:
+            swarm = client.info().get('Swarm', {})
+            if not swarm.get('ControlAvailable'):
+                return f'Docker swarm not available. You should initialize a swarm first. ($ docker swarm init)'
+        except Exception as e:
+            return f'Docker swarm check failed ({e})'
 
     @staticmethod
     def check_frp_connection():

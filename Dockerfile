@@ -6,5 +6,6 @@ RUN pip install --no-cache-dir \
     "docker==4.1.0" \
     "redis==3.3.11" \
     "werkzeug<3.0.0" \
-    "flask-restx>=1.3.0"
+    "flask-restx>=1.3.0" \
+    "urllib3<2.0.0"
 USER 1001
