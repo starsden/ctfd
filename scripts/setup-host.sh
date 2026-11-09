@@ -51,7 +51,21 @@ echo -e "\n${YELLOW}[3/8] Установка пакетов и настройк�
 apt-get update
 apt-get install -y --no-install-recommends \
     curl wget git jq dnsmasq dnsutils iptables ca-certificates lsof \
-    docker.io docker-compose-v2
+    docker.io
+
+# Установка docker compose (в репозиториях Debian пакет называется docker-compose, в репозиториях Docker — docker-compose-plugin)
+if ! apt-get install -y --no-install-recommends docker-compose 2>/dev/null; then
+    apt-get install -y --no-install-recommends docker-compose-plugin 2>/dev/null || true
+fi
+
+# Обеспечиваем работу 'docker compose' (плагин)
+if ! docker compose version >/dev/null 2>&1; then
+    mkdir -p /usr/local/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins
+    if [ -f /usr/bin/docker-compose ]; then
+        ln -sf /usr/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose 2>/dev/null || true
+        ln -sf /usr/bin/docker-compose /usr/libexec/docker/cli-plugins/docker-compose 2>/dev/null || true
+    fi
+fi
 
 systemctl enable docker containerd
 systemctl start docker containerd

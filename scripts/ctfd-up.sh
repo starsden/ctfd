@@ -50,5 +50,9 @@ if [ ! -d "$COMPOSE_DIR" ]; then
 fi
 
 cd "$COMPOSE_DIR"
-docker compose up -d
+if docker compose version >/dev/null 2>&1; then
+    docker compose up -d
+else
+    docker-compose up -d
+fi
 echo "$(date -Is) compose up done"
