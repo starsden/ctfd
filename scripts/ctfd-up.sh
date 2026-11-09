@@ -29,9 +29,12 @@ fi
 # Проверяем и инициализируем Docker Swarm при необходимости (требуется для overlay сети)
 if ! docker info 2>/dev/null | grep -q "Swarm: active"; then
     echo "$(date -Is) Swarm not active, initializing..."
-    docker swarm init --advertise-addr 192.168.100.1 2>/dev/null || docker swarm init 2>/dev/null || true
+    docker swarm leave --force 2>/dev/null || true
+    docker swarm init --advertise-addr 192.168.100.1 --listen-addr 0.0.0.0:2377 2>/dev/null || \
+    docker swarm init --advertise-addr 127.0.0.1 --listen-addr 0.0.0.0:2377 2>/dev/null || \
+    docker swarm init 2>/dev/null || true
 fi
-NODE_ID=$(docker node ls -q 2>/dev/null | head -n 1)
+NODE_ID=$(docker node ls -q 2>/dev/null | head -n 1 || true)
 if [ -n "$NODE_ID" ]; then
     docker node update --label-add "name=linux-1" "$NODE_ID" >/dev/null 2>&1 || true
 fi

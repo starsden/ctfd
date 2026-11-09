@@ -47,45 +47,7 @@ for srv in apache2 nginx lighttpd; do
     fi
 done
 
-echo -e "\n${YELLOW}[3/8] Установка пакетов и настройка Docker...${NC}"
-apt-get update
-apt-get install -y --no-install-recommends \
-    curl wget git jq dnsmasq dnsutils iptables ca-certificates lsof \
-    docker.io
-
-# Установка docker compose (в репозиториях Debian пакет называется docker-compose, в репозиториях Docker — docker-compose-plugin)
-if ! apt-get install -y --no-install-recommends docker-compose 2>/dev/null; then
-    apt-get install -y --no-install-recommends docker-compose-plugin 2>/dev/null || true
-fi
-
-# Обеспечиваем работу 'docker compose' (плагин)
-if ! docker compose version >/dev/null 2>&1; then
-    mkdir -p /usr/local/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins
-    if [ -f /usr/bin/docker-compose ]; then
-        ln -sf /usr/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose 2>/dev/null || true
-        ln -sf /usr/bin/docker-compose /usr/libexec/docker/cli-plugins/docker-compose 2>/dev/null || true
-    fi
-fi
-
-systemctl enable docker containerd
-systemctl start docker containerd
-
-if [ -n "${SUDO_USER:-}" ]; then
-    usermod -aG docker "$SUDO_USER" || true
-fi
-
-# Инициализация Docker Swarm (требуется для overlay-сетей CTFd-Whale)
-if ! docker info 2>/dev/null | grep -q 'Swarm: active'; then
-    echo -e "[*] Инициализация Docker Swarm..."
-    docker swarm init --advertise-addr "$STATIC_IP" 2>/dev/null || docker swarm init 2>/dev/null || true
-fi
-NODE_ID=$(docker node ls -q 2>/dev/null | head -n 1)
-if [ -n "$NODE_ID" ]; then
-    docker node update --label-add "name=linux-1" "$NODE_ID" 2>/dev/null || true
-fi
-echo -e "${GREEN}[+] Docker Swarm активен (нода помечена как name=linux-1).${NC}"
-
-echo -e "\n${YELLOW}[4/8] Настройка статического IP и dnsmasq...${NC}"
+echo -e "\n${YELLOW}[3/8] Настройка статического IP и dnsmasq...${NC}"
 mkdir -p /etc/network/interfaces.d
 rm -f /etc/network/interfaces.d/ctf.cfg
 cat <<EOF > /etc/network/interfaces.d/mvsosh-lab.cfg
@@ -128,7 +90,59 @@ systemctl enable --now dnsmasq
 systemctl restart dnsmasq
 echo -e "${GREEN}[+] Сеть и dnsmasq настроены.${NC}"
 
-echo -e "\n${YELLOW}[5/8] Создание структуры каталогов и копирование конфигураций...${NC}"
+echo -e "\n${YELLOW}[4/8] Установка пакетов и настройка Docker...${NC}"
+apt-get update
+apt-get install -y --no-install-recommends \
+    curl wget git jq dnsmasq dnsutils iptables ca-certificates lsof \
+    docker.io
+
+# Установка docker compose (в репозиториях Debian пакет называется docker-compose, в репозиториях Docker — docker-compose-plugin)
+if ! apt-get install -y --no-install-recommends docker-compose 2>/dev/null; then
+    apt-get install -y --no-install-recommends docker-compose-plugin 2>/dev/null || true
+fi
+
+# Обеспечиваем работу 'docker compose' (плагин)
+if ! docker compose version >/dev/null 2>&1; then
+    mkdir -p /usr/local/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins
+    if [ -f /usr/bin/docker-compose ]; then
+        ln -sf /usr/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose 2>/dev/null || true
+        ln -sf /usr/bin/docker-compose /usr/libexec/docker/cli-plugins/docker-compose 2>/dev/null || true
+    fi
+fi
+
+systemctl enable docker containerd
+systemctl start docker containerd
+
+if [ -n "${SUDO_USER:-}" ]; then
+    usermod -aG docker "$SUDO_USER" || true
+fi
+
+# Ожидание готовности Docker daemon
+for i in $(seq 1 10); do
+    if docker info >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+echo -e "\n${YELLOW}[5/8] Инициализация Docker Swarm...${NC}"
+if ! docker info 2>/dev/null | grep -q 'Swarm: active'; then
+    echo -e "[*] Инициализация Docker Swarm кластера..."
+    docker swarm leave --force 2>/dev/null || true
+    docker swarm init --advertise-addr "$STATIC_IP" --listen-addr 0.0.0.0:2377 2>/dev/null || \
+    docker swarm init --advertise-addr 127.0.0.1 --listen-addr 0.0.0.0:2377 2>/dev/null || \
+    docker swarm init 2>/dev/null || true
+fi
+
+NODE_ID=$(docker node ls -q 2>/dev/null | head -n 1 || true)
+if [ -n "$NODE_ID" ]; then
+    docker node update --label-add "name=linux-1" "$NODE_ID" >/dev/null 2>&1 || true
+    echo -e "${GREEN}[+] Docker Swarm активен (нода $NODE_ID помечена как name=linux-1).${NC}"
+else
+    echo -e "${YELLOW}[!] Предупреждение: Swarm активен, но метку ноды не удалось выставить сразу.${NC}"
+fi
+
+echo -e "\n${YELLOW}[6/8] Создание структуры каталогов и копирование конфигураций...${NC}"
 mkdir -p "$WORK_DIR/conf" "$WORK_DIR/uploads" "$STAGING_DIR/whale" "$STAGING_DIR/test-web" "$FRP_STAGING_DIR"
 
 # Копирование docker-compose и конфигов
@@ -139,7 +153,7 @@ cp -rf "$SCRIPT_DIR/conf/"* "$WORK_DIR/conf/"
 cp -rf "$SCRIPT_DIR/staging/CTFd/"* "$STAGING_DIR/"
 cp -rf "$SCRIPT_DIR/staging/frp/"* "$FRP_STAGING_DIR/"
 
-echo -e "\n${YELLOW}[6/8] Сборка Docker-образов...${NC}"
+echo -e "\n${YELLOW}[7/8] Сборка Docker-образов...${NC}"
 # 1. CTFd с плагином whale
 echo -e "[*] Сборка ctfd-whale-local..."
 docker build -t ctfd-whale-local "$STAGING_DIR"
@@ -156,7 +170,7 @@ docker tag mvsosh/test-web:latest test-web:latest || true
 
 echo -e "${GREEN}[+] Все Docker-образы собраны.${NC}"
 
-echo -e "\n${YELLOW}[7/8] Создание overlay-сети и установка автозапуска...${NC}"
+echo -e "\n${YELLOW}[8/8] Создание overlay-сети и запуск стека...${NC}"
 NET_NAME="ctfd-compose_frp_containers"
 if ! docker network inspect "$NET_NAME" >/dev/null 2>&1; then
     docker network create -d overlay --internal --attachable --subnet 172.2.0.0/16 "$NET_NAME"
@@ -171,7 +185,7 @@ cp -f "$SCRIPT_DIR/systemd/ctfd-compose.service" /etc/systemd/system/ctfd-compos
 systemctl daemon-reload
 systemctl enable ctfd-compose.service
 
-echo -e "\n${YELLOW}[8/8] Запуск стека через автоподъёмник...${NC}"
+echo -e "[*] Запуск стека через автоподъёмник..."
 /usr/local/bin/ctfd-up.sh
 
 echo -e "\n${GREEN}====================================================${NC}"
