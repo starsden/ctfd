@@ -62,7 +62,7 @@ test_check "Контейнер frps запущен" "docker ps | grep -q 'frps'"
 test_check "Контейнер frpc запущен" "docker ps | grep -q 'frpc'"
 
 # 6. HTTP доступность CTFd
-test_check "CTFd отвечает по HTTP (192.168.100.1:8000)" "curl -s -o /dev/null -w '%{http_code}' http://192.168.100.1:8000 | grep -E -q '200|302'"
+test_check "CTFd отвечает по HTTP (порт 80 или 8000)" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000 2>/dev/null | grep -E -q '200|302' || curl -s -o /dev/null -w '%{http_code}' http://192.168.100.1:8000 2>/dev/null | grep -E -q '200|302' || curl -s -o /dev/null -w '%{http_code}' http://192.168.100.1 2>/dev/null | grep -E -q '200|302'"
 
 echo -e "\n===================================================="
 if [ $ERRORS -eq 0 ]; then

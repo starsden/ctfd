@@ -27,17 +27,35 @@ STAGING_DIR="/opt/mvsosh/staging/CTFd"
 FRP_STAGING_DIR="/opt/mvsosh/staging/frp"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo -e "\n${YELLOW}[1/8] Определение сетевого интерфейса...${NC}"
-if [ -n "${1:-}" ]; then
+echo -e "\n${YELLOW}[1/8] Определение сетевого интерфейса для участников...${NC}"
+echo -e "Доступные сетевые интерфейсы:"
+ip -o link show | awk -F': ' '{print "  - "$2}' | grep -v -E 'lo|docker|br-|veth' || true
+
+# 1. Если интерфейс передан аргументом и существует
+if [ -n "${1:-}" ] && ip link show "$1" &>/dev/null; then
     IFACE="$1"
-elif ip link show eth0 &>/dev/null; then
-    IFACE="eth0"
+# 2. Если есть enp0s8 (стандартный 2-й адаптер VirtualBox для внутренней сети)
 elif ip link show enp0s8 &>/dev/null; then
     IFACE="enp0s8"
+# 3. Ищем интерфейс, отличный от дефолтного шлюзового (NAT)
 else
-    IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v -E 'lo|docker|br-|veth' | head -n 1)
+    DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5}' | head -n 1 || true)
+    LAB_CANDIDATE=""
+    for cand in $(ip -o link show | awk -F': ' '{print $2}' | grep -v -E 'lo|docker|br-|veth'); do
+        if [ "$cand" != "$DEFAULT_IFACE" ]; then
+            LAB_CANDIDATE="$cand"
+            break
+        fi
+    done
+    IFACE="${LAB_CANDIDATE:-${DEFAULT_IFACE:-eth0}}"
 fi
-echo -e "${GREEN}[+] Выбран интерфейс: $IFACE${NC}"
+
+if [ -z "${IFACE:-}" ] || ! ip link show "$IFACE" &>/dev/null; then
+    echo -e "${RED}[!] Ошибка: подходящий сетевой интерфейс не найден!${NC}"
+    echo -e "Укажите существующий интерфейс аргументом, например: $0 enp0s8"
+    exit 1
+fi
+echo -e "${GREEN}[+] Выбран интерфейс для сети соревнований: $IFACE${NC}"
 
 echo -e "\n${YELLOW}[2/8] Проверка и освобождение конфликтующих портов...${NC}"
 for srv in apache2 nginx lighttpd systemd-resolved bind9 named; do
@@ -216,9 +234,27 @@ systemctl enable ctfd-compose.service
 echo -e "[*] Запуск стека через автоподъёмник..."
 /usr/local/bin/ctfd-up.sh
 
+echo -e "[*] Ожидание запуска CTFd и базы данных (до 60 секунд)..."
+CTFD_UP=0
+for i in $(seq 1 30); do
+    if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000 2>/dev/null | grep -E -q "200|302"; then
+        CTFD_UP=1
+        break
+    fi
+    sleep 2
+done
+
+if [ "$CTFD_UP" -eq 1 ]; then
+    echo -e "${GREEN}[+] CTFd запущен и успешно отвечает на запросы!${NC}"
+else
+    echo -e "${YELLOW}[*] Контейнеры поднимаются. Проверьте статус через: docker ps${NC}"
+fi
+
 echo -e "\n${GREEN}====================================================${NC}"
 echo -e "${GREEN}[+] Развертывание успешно завершено!${NC}"
-echo -e "    CTFd доступен по адресам:"
+echo -e "    CTFd доступен по адресам (порты 80 и 8000):"
+echo -e "    -> http://mvsosh.local"
+echo -e "    -> http://192.168.100.1"
 echo -e "    -> http://mvsosh.local:8000"
 echo -e "    -> http://192.168.100.1:8000"
 echo -e "    Диапазон динамических портов: 21000-22000"

@@ -25,7 +25,8 @@ services:
       cache:
         condition: service_started
     ports:
-      - "192.168.100.1:8000:8000"
+      - "80:8000"
+      - "8000:8000"
     volumes:
       - ./uploads:/var/uploads
       - /var/run/docker.sock:/var/run/docker.sock
@@ -67,7 +68,7 @@ services:
     volumes:
       - ./conf/frps.ini:/conf/frps.ini:ro
     ports:
-      - "192.168.100.1:21000-22000:21000-22000"
+      - "21000-22000:21000-22000"
     networks:
       - frp_connect
 
