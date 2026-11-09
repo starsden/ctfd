@@ -55,8 +55,8 @@ fi
 
 cd "$COMPOSE_DIR"
 if docker compose version >/dev/null 2>&1; then
-    docker compose up -d
+    docker compose up -d --remove-orphans
 else
-    docker-compose up -d
+    docker-compose up -d --remove-orphans
 fi
 echo "$(date -Is) compose up done"

@@ -16,6 +16,7 @@ networks:
 
 services:
   ctfd:
+    container_name: ctfd
     image: ctfd-whale-local
     user: root
     restart: always
@@ -40,6 +41,7 @@ services:
       - frp_connect
 
   db:
+    container_name: db
     image: mariadb:11
     restart: always
     environment:
@@ -57,11 +59,13 @@ services:
       retries: 12
 
   cache:
+    container_name: cache
     image: redis:7
     restart: always
     networks: [internal]
 
   frps:
+    container_name: frps
     image: local-frp
     command: ["frps", "-c", "/conf/frps.ini"]
     restart: always
@@ -73,6 +77,7 @@ services:
       - frp_connect
 
   frpc:
+    container_name: frpc
     image: local-frp
     command: ["frpc", "-c", "/conf/frpc.ini"]
     restart: always
