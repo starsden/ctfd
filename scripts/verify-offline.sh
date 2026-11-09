@@ -3,6 +3,7 @@
 # verify-offline.sh - Проверка готовности сервера к работе без интернета
 # ==============================================================================
 set -uo pipefail
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

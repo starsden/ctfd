@@ -3,6 +3,7 @@
 # setup-host.sh - Автоматическая настройка сервера CTFd на Debian Trixie (mvsosh)
 # ==============================================================================
 set -euo pipefail
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -49,13 +50,24 @@ done
 
 echo -e "\n${YELLOW}[3/8] Установка пакетов и настройка Docker...${NC}"
 apt-get update
-apt-get install -y --no-install-recommends \
+apt-get install -y \
     curl wget git jq dnsmasq dnsutils iptables ca-certificates lsof \
-    docker.io
+    docker.io docker-cli
 
 # Установка docker compose (в репозиториях Debian пакет называется docker-compose, в репозиториях Docker — docker-compose-plugin)
-if ! apt-get install -y --no-install-recommends docker-compose 2>/dev/null; then
-    apt-get install -y --no-install-recommends docker-compose-plugin 2>/dev/null || true
+if ! apt-get install -y docker-compose 2>/dev/null; then
+    apt-get install -y docker-compose-plugin 2>/dev/null || true
+fi
+
+# Проверка доступности бинарника docker
+if ! command -v docker >/dev/null 2>&1; then
+    echo -e "${YELLOW}[*] Утилита docker не найдена в PATH, попытка доустановки docker-cli...${NC}"
+    apt-get install -y docker-cli || true
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo -e "${RED}[!] КРИТИЧЕСКАЯ ОШИБКА: docker не найден после установки пакетов.${NC}"
+    exit 1
 fi
 
 # Обеспечиваем работу 'docker compose' (плагин)

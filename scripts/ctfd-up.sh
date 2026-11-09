@@ -1,6 +1,7 @@
 #!/bin/bash
 # /usr/local/bin/ctfd-up.sh — автоподъём стека CTFd после загрузки ОС.
 set -euo pipefail
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 
 COMPOSE_DIR=/opt/mvsosh/CTFd-compose
 NET_NAME=ctfd-compose_frp_containers
