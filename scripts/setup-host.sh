@@ -39,7 +39,7 @@ fi
 echo -e "${GREEN}[+] Выбран интерфейс: $IFACE${NC}"
 
 echo -e "\n${YELLOW}[2/8] Проверка и освобождение конфликтующих портов...${NC}"
-for srv in apache2 nginx lighttpd; do
+for srv in apache2 nginx lighttpd systemd-resolved bind9 named; do
     if systemctl is-active --quiet "$srv" 2>/dev/null; then
         echo -e "[*] Отключение конфликтующей службы $srv..."
         systemctl stop "$srv" 2>/dev/null || true
@@ -47,50 +47,7 @@ for srv in apache2 nginx lighttpd; do
     fi
 done
 
-echo -e "\n${YELLOW}[3/8] Настройка статического IP и dnsmasq...${NC}"
-mkdir -p /etc/network/interfaces.d
-rm -f /etc/network/interfaces.d/ctf.cfg
-cat <<EOF > /etc/network/interfaces.d/mvsosh-lab.cfg
-auto $IFACE
-iface $IFACE inet static
-    address $STATIC_IP
-    netmask $SUBNET_MASK
-EOF
-
-grep -q "interfaces.d" /etc/network/interfaces 2>/dev/null || echo "source /etc/network/interfaces.d/*" >> /etc/network/interfaces
-
-ip addr replace "${STATIC_IP}/24" dev "$IFACE" 2>/dev/null || true
-ip link set dev "$IFACE" up 2>/dev/null || true
-
-# Конфигурация dnsmasq
-mkdir -p /etc/dnsmasq.d
-rm -f /etc/dnsmasq.d/ctf.conf /etc/dnsmasq.d/ctfd.conf /etc/dnsmasq.d/mvsosh.conf
-cat <<EOF > /etc/dnsmasq.d/mvsosh-lab.conf
-# ---- Слушаем только лабовый интерфейс ----
-interface=$IFACE
-bind-interfaces
-listen-address=$STATIC_IP
-
-# ---- DHCP ----
-dhcp-range=192.168.100.100,192.168.100.200,255.255.255.0,12h
-dhcp-option=option:router,$STATIC_IP
-dhcp-option=option:dns-server,$STATIC_IP
-
-# ---- DNS ----
-local=/mvsosh.local/
-domain=mvsosh.local
-no-resolv
-no-poll
-address=/mvsosh.local/$STATIC_IP
-address=/ctf.local/$STATIC_IP
-address=/#/$STATIC_IP
-EOF
-
-systemctl enable --now dnsmasq
-systemctl restart dnsmasq
-echo -e "${GREEN}[+] Сеть и dnsmasq настроены.${NC}"
-
-echo -e "\n${YELLOW}[4/8] Установка пакетов и настройка Docker...${NC}"
+echo -e "\n${YELLOW}[3/8] Установка пакетов и настройка Docker...${NC}"
 apt-get update
 apt-get install -y --no-install-recommends \
     curl wget git jq dnsmasq dnsutils iptables ca-certificates lsof \
@@ -124,6 +81,65 @@ for i in $(seq 1 10); do
     fi
     sleep 1
 done
+
+echo -e "\n${YELLOW}[4/8] Настройка статического IP и dnsmasq...${NC}"
+mkdir -p /etc/network/interfaces.d
+rm -f /etc/network/interfaces.d/ctf.cfg
+cat <<EOF > /etc/network/interfaces.d/mvsosh-lab.cfg
+auto $IFACE
+iface $IFACE inet static
+    address $STATIC_IP
+    netmask $SUBNET_MASK
+EOF
+
+grep -q "interfaces.d" /etc/network/interfaces 2>/dev/null || echo "source /etc/network/interfaces.d/*" >> /etc/network/interfaces
+
+ip addr replace "${STATIC_IP}/24" dev "$IFACE" 2>/dev/null || true
+ip link set dev "$IFACE" up 2>/dev/null || true
+
+# Освобождаем порт 53 перед запуском dnsmasq при необходимости
+if ss -tulpn | grep -q ':53 '; then
+    for srv in systemd-resolved bind9 named; do
+        systemctl stop "$srv" 2>/dev/null || true
+        systemctl disable "$srv" 2>/dev/null || true
+    done
+fi
+
+# Конфигурация dnsmasq
+mkdir -p /etc/dnsmasq.d
+rm -f /etc/dnsmasq.d/ctf.conf /etc/dnsmasq.d/ctfd.conf /etc/dnsmasq.d/mvsosh.conf
+cat <<EOF > /etc/dnsmasq.d/mvsosh-lab.conf
+# ---- Слушаем только лабовый интерфейс ----
+interface=$IFACE
+bind-interfaces
+listen-address=$STATIC_IP
+
+# ---- DHCP ----
+dhcp-range=192.168.100.100,192.168.100.200,255.255.255.0,12h
+dhcp-option=option:router,$STATIC_IP
+dhcp-option=option:dns-server,$STATIC_IP
+
+# ---- DNS ----
+local=/mvsosh.local/
+domain=mvsosh.local
+no-resolv
+no-poll
+address=/mvsosh.local/$STATIC_IP
+address=/ctf.local/$STATIC_IP
+address=/local/$STATIC_IP
+EOF
+
+# Проверка синтаксиса перед перезапуском
+if dnsmasq --test 2>/dev/null; then
+    echo -e "[*] Синтаксис dnsmasq корректен."
+else
+    echo -e "${YELLOW}[!] Предупреждение dnsmasq --test:${NC}"
+    dnsmasq --test || true
+fi
+
+systemctl enable --now dnsmasq
+systemctl restart dnsmasq
+echo -e "${GREEN}[+] Сеть и dnsmasq настроены.${NC}"
 
 echo -e "\n${YELLOW}[5/8] Инициализация Docker Swarm...${NC}"
 if ! docker info 2>/dev/null | grep -q 'Swarm: active'; then
