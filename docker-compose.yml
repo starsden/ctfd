@@ -42,16 +42,6 @@ services:
     container_name: db
     image: mariadb:11
     restart: always
-    command: [
-      mysqld,
-      --character-set-server=utf8mb4,
-      --collation-server=utf8mb4_unicode_ci,
-      --innodb-buffer-pool-size=64M,
-      --max-connections=50,
-      --key-buffer-size=16M,
-      --table-open-cache=100,
-      --innodb-log-buffer-size=8M
-    ]
     environment:
       MYSQL_ROOT_PASSWORD: ctfd
       MYSQL_DATABASE: ctfd
@@ -59,7 +49,7 @@ services:
       MYSQL_PASSWORD: ctfd
     volumes:
       - db_data:/var/lib/mysql
-    mem_limit: 384m
+    mem_limit: 512m
     networks: [internal]
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
