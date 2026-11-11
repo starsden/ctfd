@@ -32,7 +32,8 @@ services:
       SECRET_KEY: 5f345fbaa424e6a22b51addf7f27430927879ae2
       DATABASE_URL: mysql+pymysql://root:ctfd@db/ctfd
       REDIS_URL: redis://cache:6379
-      WORKERS: 4
+      WORKERS: 1
+    mem_limit: 768m
     networks:
       - internal
       - frp_connect
@@ -41,6 +42,16 @@ services:
     container_name: db
     image: mariadb:11
     restart: always
+    command: [
+      mysqld,
+      --character-set-server=utf8mb4,
+      --collation-server=utf8mb4_unicode_ci,
+      --innodb-buffer-pool-size=64M,
+      --max-connections=50,
+      --key-buffer-size=16M,
+      --table-open-cache=100,
+      --innodb-log-buffer-size=8M
+    ]
     environment:
       MYSQL_ROOT_PASSWORD: ctfd
       MYSQL_DATABASE: ctfd
@@ -48,6 +59,7 @@ services:
       MYSQL_PASSWORD: ctfd
     volumes:
       - db_data:/var/lib/mysql
+    mem_limit: 384m
     networks: [internal]
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
@@ -59,6 +71,8 @@ services:
     container_name: cache
     image: redis:7
     restart: always
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    mem_limit: 128m
     networks: [internal]
 
   frps:
@@ -70,6 +84,7 @@ services:
       - ./conf/frps.ini:/conf/frps.ini:ro
     ports:
       - "21000-22000:21000-22000"
+    mem_limit: 128m
     networks:
       - frp_connect
 
@@ -80,6 +95,7 @@ services:
     restart: always
     volumes:
       - ./conf/frpc.ini:/conf/frpc.ini
+    mem_limit: 128m
     networks:
       - frp_connect
       - frp_containers
